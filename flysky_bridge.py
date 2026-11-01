@@ -1,12 +1,13 @@
-"""FlySky FS-i6X -> sanal Xbox 360 kolu köprüsü (Bodycam FPV dronu için).
+"""FlySky FS-i6X -> virtual Xbox 360 controller bridge (for the Bodycam FPV drone).
 
-Kullanım:
-  python flysky_bridge.py            Köprüyü çalıştırır (ayar yoksa önce kalibrasyon yapar)
-  python flysky_bridge.py --calibrate  Yalnızca kalibrasyon yapar
-  python flysky_bridge.py --assign-spawn  Yalnızca drone çıkarma anahtarını atar
-  python flysky_bridge.py --seconds N  N saniye çalışıp çıkar (test için)
+Usage:
+  python flysky_bridge.py                 Run the bridge (calibrates first if no config exists)
+  python flysky_bridge.py --calibrate     Run calibration only
+  python flysky_bridge.py --assign-spawn  Assign the drone spawn switch only
+  python flysky_bridge.py --lang tr       Set the language (en or tr); the choice is saved
+  python flysky_bridge.py --seconds N     Run for N seconds, then exit (for testing)
 
-Oyundaki kol düzeni: sol çubuk = gaz/yaw, sağ çubuk = pitch/roll, LB = uçuş modu.
+In-game layout: left stick = throttle/yaw, right stick = pitch/roll, LB = flight mode.
 """
 import argparse
 import ctypes
@@ -35,6 +36,83 @@ KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE = 0x0002, 0x0008
 MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
 INPUT_MOUSE, INPUT_KEYBOARD = 0, 1
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+DEFAULT_LANGUAGE = "en"
+language = DEFAULT_LANGUAGE
+MESSAGES = {
+    "en": {
+        "joystick_missing": "Controller not found: check the cable and make sure it is turned on...",
+        "axis_detected": "  Detected: {axis} axis ({direction})",
+        "inverted": "inverted",
+        "normal": "normal",
+        "release_stick": "  Release the stick.",
+        "no_movement": "  No movement detected, trying again.",
+        "switch_prompt": "\n>>> Flip the 2-position SWITCH (e.g. SWA) you want to use for {purpose} within 6 seconds.",
+        "switch_skip_hint": "    To skip this, do not touch anything.",
+        "button_detected": "  Detected: button {bit}",
+        "switch_axis_detected": "  Detected: {axis} axis",
+        "switch_skipped": "  No switch selected; {reason}",
+        "purpose_spawn": "drone spawn",
+        "purpose_mode": "flight mode",
+        "skip_spawn": "the drone spawn macro will stay off.",
+        "skip_mode": "change the flight mode with the keyboard or in-game.",
+        "calibration_title": "=== FS-i6X CALIBRATION ===",
+        "calibration_layout": "Mode 1 layout: right stick = throttle + roll, left stick = pitch + yaw.",
+        "calibration_start": "\n>>> Release the left stick and move the THROTTLE (right stick) all the way down.",
+        "step_roll": "Push the right stick fully RIGHT and hold (keep the throttle down).",
+        "step_pitch": "Push the left stick fully UP and hold.",
+        "step_yaw": "Push the left stick fully RIGHT and hold.",
+        "step_throttle": "Push the throttle (right stick) fully UP and hold.",
+        "circle_sticks": "\n>>> For the next 10 seconds, rotate both sticks in full circles through the corners.",
+        "low_range": "Not enough movement on the {name} axis; repeat the calibration.",
+        "release_all": "\n>>> Release the sticks and lower the throttle.",
+        "calibration_saved": "\nCalibration saved: {path}",
+        "bridge_running": "Bridge running: Bodycam sees a virtual Xbox controller. Press Ctrl+C to exit.",
+        "spawn_ready": "Each flip of the drone switch spawns a drone (5 + left click, only while the game is in front).",
+        "spawn_unset": "No drone switch assigned; run Drone_Anahtari_Ata.bat to assign one.",
+        "disconnected": "\nController disconnected, throttle cut; waiting for it to reconnect...",
+        "status": "\rThrottle {throttle:+.2f}  Yaw {yaw:+.2f}  Pitch {pitch:+.2f}  Roll {roll:+.2f}  LB {lb}",
+        "bridge_stopped": "\nBridge stopped.",
+    },
+    "tr": {
+        "joystick_missing": "Kumanda bulunamadı: kabloyu ve kumandanın açık olduğunu kontrol et...",
+        "axis_detected": "  Algılandı: {axis} ekseni ({direction})",
+        "inverted": "ters",
+        "normal": "düz",
+        "release_stick": "  Çubuğu bırak.",
+        "no_movement": "  Hareket algılanmadı, tekrar deniyoruz.",
+        "switch_prompt": "\n>>> {purpose} için kullanacağın 2 konumlu ANAHTARI (örn. SWA) 6 saniye içinde çevir.",
+        "switch_skip_hint": "    Anahtar kullanmak istemiyorsan hiçbir şeye dokunma.",
+        "button_detected": "  Algılandı: düğme {bit}",
+        "switch_axis_detected": "  Algılandı: {axis} ekseni",
+        "switch_skipped": "  Anahtar seçilmedi; {reason}",
+        "purpose_spawn": "Drone çıkarma",
+        "purpose_mode": "Uçuş modu",
+        "skip_spawn": "drone çıkarma makrosu kapalı kalacak.",
+        "skip_mode": "uçuş modunu klavye veya oyun içinden değiştirirsin.",
+        "calibration_title": "=== FS-i6X KALİBRASYON ===",
+        "calibration_layout": "Mode 1 düzeni: sağ çubuk gaz+roll, sol çubuk pitch+yaw.",
+        "calibration_start": "\n>>> Sol çubuğu bırak, GAZI (sağ çubuk) EN ALTA indir.",
+        "step_roll": "Sağ çubuğu tamamen SAĞA it ve tut (gaz altta kalsın).",
+        "step_pitch": "Sol çubuğu tamamen YUKARI it ve tut.",
+        "step_yaw": "Sol çubuğu tamamen SAĞA it ve tut.",
+        "step_throttle": "Gazı (sağ çubuk) tamamen YUKARI it ve tut.",
+        "circle_sticks": "\n>>> Sıradaki 10 saniye boyunca iki çubuğu da köşelerde tam daire çevir.",
+        "low_range": "{name} ekseninde yeterli hareket görülmedi; kalibrasyonu tekrarla.",
+        "release_all": "\n>>> Çubukları bırak, gazı indir.",
+        "calibration_saved": "\nKalibrasyon kaydedildi: {path}",
+        "bridge_running": "Köprü çalışıyor: Bodycam sanal Xbox kolunu görüyor. Çıkış için Ctrl+C.",
+        "spawn_ready": "Drone anahtarını her çevirişte drone çıkar (5 + sol tık, yalnızca oyun öndeyken).",
+        "spawn_unset": "Drone anahtarı atanmadı; atamak için Drone_Anahtari_Ata.bat dosyasını çalıştır.",
+        "disconnected": "\nKumanda koptu, gaz kesildi; yeniden bağlanması bekleniyor...",
+        "status": "\rGaz {throttle:+.2f}  Yaw {yaw:+.2f}  Pitch {pitch:+.2f}  Roll {roll:+.2f}  LB {lb}",
+        "bridge_stopped": "\nKöprü durdu.",
+    },
+}
+
+
+def t(key, **values):
+    return MESSAGES[language][key].format(**values)
 
 winmm = ctypes.WinDLL("winmm")
 user32 = ctypes.WinDLL("user32")
@@ -155,7 +233,7 @@ def read(joy_id):
 def wait_for_joystick():
     joy_id = find_joystick()
     if joy_id is None:
-        print("Kumanda bulunamadı: kabloyu ve kumandanın açık olduğunu kontrol et...")
+        print(t("joystick_missing"))
     while joy_id is None:
         time.sleep(1)
         joy_id = find_joystick()
@@ -195,17 +273,17 @@ def detect_axis(joy_id, baseline, used, instruction):
         size, axis, delta = max(deltas)
         winsound.Beep(1200, 150)
         if size >= MIN_DELTA:
-            print(f"  Algılandı: {AXES[axis]} ekseni ({'ters' if delta < 0 else 'düz'})")
-            print("  Çubuğu bırak.")
+            print(t("axis_detected", axis=AXES[axis], direction=t("inverted" if delta < 0 else "normal")))
+            print(t("release_stick"))
             time.sleep(2)
             return axis, delta < 0
-        print("  Hareket algılanmadı, tekrar deniyoruz.")
+        print(t("no_movement"))
 
 
 def detect_switch(joy_id, used, purpose, skip_message, ignored_buttons=0):
     """Bir görev için anahtarı algılar. (tür, numara) döner; atlanırsa None."""
-    print(f"\n>>> {purpose} için kullanacağın 2 konumlu ANAHTARI (örn. SWA) 6 saniye içinde çevir.")
-    print("    Anahtar kullanmak istemiyorsan hiçbir şeye dokunma.")
+    print(t("switch_prompt", purpose=purpose))
+    print(t("switch_skip_hint"))
     start_axes, start_buttons = read(joy_id)
     end = time.time() + 6
     while time.time() < end:
@@ -213,18 +291,19 @@ def detect_switch(joy_id, used, purpose, skip_message, ignored_buttons=0):
         changed = (buttons ^ start_buttons) & ~ignored_buttons
         if changed:
             bit = (changed & -changed).bit_length() - 1
-            print(f"  Algılandı: düğme {bit}")
+            print(t("button_detected", bit=bit))
             return {"type": "button", "index": bit}
         for i, (now, first) in enumerate(zip(axes, start_axes)):
             if i not in used and abs(now - first) >= MIN_DELTA:
-                print(f"  Algılandı: {AXES[i]} ekseni")
+                print(t("switch_axis_detected", axis=AXES[i]))
                 return {"type": "axis", "index": i}
         time.sleep(0.01)
-    print(f"  Anahtar seçilmedi; {skip_message}")
+    print(t("switch_skipped", reason=skip_message))
     return None
 
 
 def save_config(config):
+    config["language"] = language
     CONFIG_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
@@ -237,8 +316,7 @@ def assign_spawn_switch(joy_id, config):
         used.add(mode["index"])
     elif mode:
         ignored_buttons = 1 << mode["index"]
-    spawn = detect_switch(joy_id, used, "Drone çıkarma",
-                          "drone çıkarma makrosu kapalı kalacak.", ignored_buttons)
+    spawn = detect_switch(joy_id, used, t("purpose_spawn"), t("skip_spawn"), ignored_buttons)
     if spawn:
         config["spawn_switch"] = spawn
         save_config(config)
@@ -247,24 +325,24 @@ def assign_spawn_switch(joy_id, config):
 
 def calibrate():
     joy_id = wait_for_joystick()
-    print("=== FS-i6X KALİBRASYON ===")
-    print("Mode 1 düzeni: sağ çubuk gaz+roll, sol çubuk pitch+yaw.")
-    print("\n>>> Sol çubuğu bırak, GAZI (sağ çubuk) EN ALTA indir.")
+    print(t("calibration_title"))
+    print(t("calibration_layout"))
+    print(t("calibration_start"))
     countdown(5)
     baseline = averaged_axes(joy_id)
 
     mapping, used = {}, set()
     for name, instruction in (
-        ("roll", "Sağ çubuğu tamamen SAĞA it ve tut (gaz altta kalsın)."),
-        ("pitch", "Sol çubuğu tamamen YUKARI it ve tut."),
-        ("yaw", "Sol çubuğu tamamen SAĞA it ve tut."),
-        ("throttle", "Gazı (sağ çubuk) tamamen YUKARI it ve tut."),
+        ("roll", t("step_roll")),
+        ("pitch", t("step_pitch")),
+        ("yaw", t("step_yaw")),
+        ("throttle", t("step_throttle")),
     ):
         axis, invert = detect_axis(joy_id, baseline, used, instruction)
         used.add(axis)
         mapping[name] = {"axis": axis, "invert": invert}
 
-    print("\n>>> Sıradaki 10 saniye boyunca iki çubuğu da köşelerde tam daire çevir.")
+    print(t("circle_sticks"))
     winsound.Beep(1000, 200)
     low, high = list(baseline), list(baseline)
     end = time.time() + 10
@@ -276,18 +354,17 @@ def calibrate():
     for name, entry in mapping.items():
         i = entry["axis"]
         if high[i] - low[i] < MIN_DELTA * 2:
-            raise SystemExit(f"{name} ekseninde yeterli hareket görülmedi; kalibrasyonu tekrarla.")
+            raise SystemExit(t("low_range", name=name))
         entry.update(min=low[i], max=high[i], center=baseline[i])
 
-    print("\n>>> Çubukları bırak, gazı indir.")
+    print(t("release_all"))
     time.sleep(2)
-    mode_switch = detect_switch(joy_id, used, "Uçuş modu",
-                                "uçuş modunu klavye veya oyun içinden değiştirirsin.")
+    mode_switch = detect_switch(joy_id, used, t("purpose_mode"), t("skip_mode"))
     config = {"axes": mapping, "mode_switch": mode_switch}
     save_config(config)
     time.sleep(1)
     assign_spawn_switch(joy_id, config)
-    print(f"\nKalibrasyon kaydedildi: {CONFIG_PATH}")
+    print(t("calibration_saved", path=CONFIG_PATH))
     winsound.Beep(1500, 300)
     return config
 
@@ -324,12 +401,12 @@ def run(config, seconds=None):
     mapping, switch = config["axes"], config["mode_switch"]
     winmm.timeBeginPeriod(1)
     joy_id = wait_for_joystick()
-    print("Köprü çalışıyor: Bodycam sanal Xbox kolunu görüyor. Çıkış için Ctrl+C.")
+    print(t("bridge_running"))
     spawn_switch = config.get("spawn_switch")
     if spawn_switch:
-        print("Drone anahtarını her çevirişte drone çıkar (5 + sol tık, yalnızca oyun öndeyken).")
+        print(t("spawn_ready"))
     else:
-        print("Drone anahtarı atanmadı; atamak için Drone_Anahtari_Ata.bat dosyasını çalıştır.")
+        print(t("spawn_unset"))
 
     last_switch, lb_until, last_print, started = None, 0.0, 0.0, time.time()
     last_spawn = None
@@ -342,7 +419,7 @@ def run(config, seconds=None):
                 pad.reset()
                 pad.left_joystick_float(0.0, -1.0)  # Bağlantı koptu: gazı kes
                 pad.update()
-                print("\nKumanda koptu, gaz kesildi; yeniden bağlanması bekleniyor...")
+                print(t("disconnected"))
                 joy_id = wait_for_joystick()
                 last_switch = None
                 last_spawn = None
@@ -377,8 +454,8 @@ def run(config, seconds=None):
             pad.update()
 
             if now - last_print > 0.1:
-                print(f"\rGaz {ly:+.2f}  Yaw {lx:+.2f}  Pitch {ry:+.2f}  Roll {rx:+.2f}  "
-                      f"LB {'ON ' if now < lb_until else 'off'}", end="", flush=True)
+                print(t("status", throttle=ly, yaw=lx, pitch=ry, roll=rx,
+                        lb="ON " if now < lb_until else "off"), end="", flush=True)
                 last_print = now
             time.sleep(0.004)
     except KeyboardInterrupt:
@@ -387,19 +464,25 @@ def run(config, seconds=None):
         pad.reset()
         pad.update()
         winmm.timeEndPeriod(1)
-        print("\nKöprü durdu.")
+        print(t("bridge_stopped"))
 
 
 def main():
+    global language
     parser = argparse.ArgumentParser()
+    parser.add_argument("--lang", choices=sorted(MESSAGES), help="interface language (saved)")
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--assign-spawn", action="store_true")
     parser.add_argument("--seconds", type=float)
     args = parser.parse_args()
+    saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else None
+    language = args.lang or (saved or {}).get("language", DEFAULT_LANGUAGE)
     if args.calibrate:
         calibrate()
         return
-    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else calibrate()
+    config = saved or calibrate()
+    if args.lang:
+        save_config(config)
     if args.assign_spawn or "spawn_switch" not in config:
         config = assign_spawn_switch(wait_for_joystick(), config)
     if args.assign_spawn:
