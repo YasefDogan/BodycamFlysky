@@ -1,0 +1,36 @@
+{
+    "axes":  {
+                 "roll":  {
+                              "axis":  5,
+                              "invert":  false,
+                              "min":  9546,
+                              "max":  55913,
+                              "center":  32767.0
+                          },
+                 "pitch":  {
+                               "axis":  1,
+                               "invert":  false,
+                               "min":  9546,
+                               "max":  55653,
+                               "center":  32767.0
+                           },
+                 "yaw":  {
+                             "axis":  0,
+                             "invert":  false,
+                             "min":  9546,
+                             "max":  55913,
+                             "center":  32767.0
+                         },
+                 "throttle":  {
+                                  "axis":  2,
+                                  "invert":  false,
+                                  "min":  9546.0,
+                                  "max":  55913,
+                                  "center":  9546.0
+                              }
+             },
+    "mode_switch":  {
+                        "type":  "button",
+                        "index":  6
+                    }
+}
